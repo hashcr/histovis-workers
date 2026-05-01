@@ -1,0 +1,2 @@
+handlers:
+  describe_wsi: handlers.describe_wsi.handle_describe_wsi
