@@ -1,0 +1,12 @@
+fastapi
+uvicorn
+pydantic-settings
+aio-pika
+httpx
+pyyaml
+stardist
+tensorflow
+scikit-image
+Pillow
+numpy
+-e ../consumer-common

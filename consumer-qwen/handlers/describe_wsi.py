@@ -38,7 +38,7 @@ async def handle_describe_wsi(message: JobMessage) -> None:
     try:
         llm = get_llm()
 
-        logger.info("Running inference | job_id=%s", message.job_id)
+        logger.info("Running QWEN inference | job_id=%s", message.job_id)
 
         future: asyncio.Future = asyncio.get_running_loop().run_in_executor(
             None,
