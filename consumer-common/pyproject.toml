@@ -1,0 +1,18 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "consumer-common"
+version = "0.1.0"
+description = "Shared library for histovis-workers consumers"
+requires-python = ">=3.11"
+dependencies = [
+    "aio-pika",
+    "httpx",
+    "pydantic-settings",
+    "pyyaml",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["consumer_common"]
