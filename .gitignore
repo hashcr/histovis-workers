@@ -216,3 +216,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+/.venv-wsl/
+/consumer-qwen/models/qwen2.5-0.5b-instruct-q5_k_m.gguf
+/.idea/
