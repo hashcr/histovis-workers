@@ -1,13 +1,13 @@
 import asyncio
-from concurrent.futures import Future as ConcurrentFuture
-
 import logging
 
 from llama_cpp import Llama
 from llama_cpp.llama_types import ChatCompletionRequestSystemMessage, ChatCompletionRequestUserMessage
 
-from http_client import notify_job_completed, notify_job_failed
+from consumer_common.http_client import notify_job_completed, notify_job_failed
+from consumer_common.models import JobMessage
 from model_loader import get_llm
+from settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -32,33 +32,27 @@ def run_inference(llm: Llama, image_url: str, args: dict) -> str:
 
     return response["choices"][0]["message"]["content"]
 
-async def handle_describe_wsi(body: dict) -> None:
-    job_id = body.get("jobId")
-    image_url = body.get("imageUrl")
-    args = body.get("args", {})
-
-    logger.info("Handling describe_wsi | job_id: %s | image_url: %s", job_id, image_url)
+async def handle_describe_wsi(message: JobMessage) -> None:
+    logger.info("Handling describe_wsi | job_id: %s", message.job_id)
 
     try:
         llm = get_llm()
 
-        logger.info("Running inference | job_id=%s", job_id)
+        logger.info("Running inference | job_id=%s", message.job_id)
 
         future: asyncio.Future = asyncio.get_running_loop().run_in_executor(
             None,
-            lambda: run_inference(llm, image_url, args),  # type: ignore[arg-type]
+            lambda: run_inference(llm, message.imageUrl, message.args),  # type: ignore[arg-type]
         )
         output: str = await future
 
-        logger.info("Inference completed | job_id=%s | ouput_length=%d", job_id, len(output))
+        logger.info("Inference completed | job_id=%s | ouput_length=%d", message.job_id, len(output))
 
-        await notify_job_completed(job_id, output)
+        await notify_job_completed(settings.analysis_service_url, message.job_id, output)
 
     except Exception as e:
-        logger.error("describe_wsi failed | job_id=%s | error=%s", job_id, e)
-        await notify_job_failed(job_id, str(e))
+        logger.error("describe_wsi failed | job_id=%s | error=%s", message.job_id, e)
+        await notify_job_failed(settings.analysis_service_url, message.job_id, str(e))
         raise
 
-
-    #model inference placeholder
-    logger.info("Job %s completed", job_id)
+    logger.info("Job %s completed", message.job_id)
