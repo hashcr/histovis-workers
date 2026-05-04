@@ -1,153 +1,149 @@
-# histovis-workers
+# HistoVis AI
 
-RabbitMQ consumer microservices for the HistoVis medical image analysis system.
+> Python AI worker services for HistoVis — a medical image analysis platform for whole slide image (WSI) processing.
+> Built as part of an academic thesis project.
 
-- **consumer-qwen** — Qwen2.5-0.5B GGUF inference via llama-cpp-python (port 8000)
-- **consumer-stardist** — H&E nuclei detection via StarDist 2D_versatile_he (port 8001)
+[![License: CC BY-NC 4.0](https://img.shields.io/badge/License-CC%20BY--NC%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc/4.0/)
+![Status: Mostly Complete](https://img.shields.io/badge/status-mostly%20complete-green)
 
-## Prerequisites
+---
 
-- Docker and Docker Compose
-- The `histovis-network` external Docker network (created by `histovis-monorepo`)
-- The Qwen GGUF model file (see below)
+## Overview
 
-## Setup
+HistoVis AI contains the Python microservices responsible for AI-powered analysis of histopathology whole slide images. Workers consume jobs from RabbitMQ, run inference, and report results back to the Spring Boot backend.
 
-### 1. Clone the repository
+**Services:**
+- `consumer-stardist` — Cell detection and counting using StarDist for H&E and IHC images
+- `consumer-llama` — Natural language description of WSI images using a quantized LLM (Mistral 7B GGUF)
+- `consumer-common` — Shared internal package (RabbitMQ client, result notifier, config base)
 
-```bash
-git clone <repo-url>
-cd histovis-workers
-```
+---
 
-### 2. Configure environment
+## Tech Stack
 
-```bash
-cp .env.example .env
-# Edit .env and fill in RABBITMQ_USER and RABBITMQ_PASSWORD
-```
+| Layer | Technology |
+|---|---|
+| Language | Python 3.11 |
+| Messaging | aio-pika (RabbitMQ async consumer) |
+| H&E cell detection | StarDist (`2D_versatile_he` pretrained model) |
+| IHC nucleus counting | StarDist + scikit-image (`rgb2hed` DAB deconvolution) |
+| LLM inference | llama-cpp-python (in-process, GGUF quantized models) |
+| HTTP callbacks | httpx (async) |
+| Config | pydantic-settings |
+| Infrastructure | Docker Compose |
 
-### 3. Download the Qwen GGUF model
-
-Place the model file at `consumer-qwen/models/qwen2.5-0.5b-instruct-q5_k_m.gguf`.
-Download from [Hugging Face — Qwen2.5-0.5B-Instruct-GGUF](https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF).
-
-```bash
-mkdir -p consumer-qwen/models
-# example using huggingface-cli:
-huggingface-cli download Qwen/Qwen2.5-0.5B-Instruct-GGUF \
-    qwen2.5-0.5b-instruct-q5_k_m.gguf \
-    --local-dir consumer-qwen/models
-```
-
-The model file is gitignored and never bundled into the Docker image; it is mounted read-only at container start.
-
-### 4. Build and start the services
-
-```bash
-docker compose build
-docker compose up -d
-```
-
-**First start note — StarDist model:** `consumer-stardist` calls
-`StarDist2D.from_pretrained("2D_versatile_he")` on startup, which downloads the pretrained
-model (~100 MB) into the `stardist_cache` named volume. Subsequent starts reuse the cache.
-Monitor progress with `docker compose logs -f consumer-stardist`.
-
-### 5. Verify health
-
-```bash
-curl http://localhost:8000/health   # {"status":"up","model_ready":true|false}
-curl http://localhost:8001/health   # {"status":"up","model_ready":true|false}
-```
-
-`model_ready` becomes `true` once the background thread finishes loading the model.
+---
 
 ## Architecture
 
 ```
-histovis-monorepo (external network: histovis-network)
-├── analysis-service  :8082   — Spring Boot, sends jobs via RabbitMQ
-├── rabbitmq                  — user: histovis / exchange: analysis.exchange
-└── minio                     — image storage (presigned URLs in JobMessage.imageUrl)
-
-histovis-workers
-├── consumer-qwen     :8000   — subscribes to job.qwen.*  → qwen.queue
-└── consumer-stardist :8001   — subscribes to job.stardist.* → stardist.queue
+RabbitMQ (analysis.exchange)
+   │
+   ├── job.stardist.#  →  consumer-stardist
+   │                         ├── Loads StarDist model at startup
+   │                         ├── Runs inference via asyncio.run_in_executor
+   │                         └── POSTs result to analysis-service
+   │
+   └── job.llama.#     →  consumer-llama
+                             ├── Loads GGUF model at startup
+                             ├── Runs inference via asyncio.run_in_executor
+                             └── POSTs result to analysis-service
 ```
 
-RabbitMQ message shape (`JobMessage`):
+**RabbitMQ config:**
+- Exchange: `analysis.exchange` (topic)
+- Routing keys: `job.<model>.<task>.<target>` (e.g. `job.stardist.detect.he`)
+- Result routing: `job.results.completed` / `job.results.failed` → `results.queue`
+- Prefetch: `prefetch_count=1` for fair dispatch across scaled instances
 
-| field    | type            | notes                              |
-|----------|-----------------|------------------------------------|
-| jobId    | UUID            |                                    |
-| imageUrl | str             | presigned MinIO URL                |
-| args     | dict[str, str]  | plugin-specific params, default {} |
+---
 
-The routing key suffix (e.g. `job.qwen.describe_wsi`) becomes the `plugin_code`, which is
-looked up in `handlers.yaml` to dispatch to the correct async handler function.
+## Prerequisites
 
-## Volumes
+- Python 3.11+
+- Docker + Docker Compose
+- RabbitMQ running (shared `histovis-network`)
+- Model files (see below)
 
-| volume          | mount point      | purpose                           |
-|-----------------|------------------|-----------------------------------|
-| host bind       | `/app/models`    | Qwen GGUF model (read-only)       |
-| `stardist_cache`| `/root/.stardist`| StarDist pretrained model cache   |
+---
 
-## Locking transitive dependencies (consumer-stardist)
+## Model Setup
 
-`consumer-stardist/requirements.txt` pins direct dependencies only. After a successful
-build, capture the full transitive lock with:
+### StarDist
+The `2D_versatile_he` pretrained model is downloaded automatically by StarDist on first run and cached at:
+```
+~/.keras/datasets/
+```
+No manual download required.
+
+### Mistral 7B GGUF (for consumer-llama)
+Download the quantized model manually and place it in the `models/` directory:
 
 ```bash
-docker compose run --rm consumer-stardist pip freeze > consumer-stardist/requirements.txt
-# Remove the "-e" editable line and re-add it at the bottom manually
+# Example: Q4_K_M quantization
+wget https://huggingface.co/TheBloke/Mistral-7B-v0.1-GGUF/resolve/main/mistral-7b-v0.1.Q4_K_M.gguf \
+  -O models/mistral-7b-v0.1.Q4_K_M.gguf
 ```
 
-`consumer-qwen/requirements.txt` is already a full pip freeze.
+Mount the `models/` directory as a volume — models are never bundled into Docker images.
 
-## Useful commands
+---
+
+## Getting Started
 
 ```bash
-# Tail logs
-docker compose logs -f consumer-qwen
-docker compose logs -f consumer-stardist
+# Clone the repo
+git clone https://github.com/hashcr/histovis-ai.git
+cd histovis-ai
 
-# Rebuild a single service after code changes
-docker compose build consumer-qwen
-docker compose up -d --no-deps consumer-qwen
+# Create the shared Docker network (if not already created)
+docker network create histovis-network
+
+# Start all workers
+docker compose up --build
+
+# Or run individually
+docker compose up --build consumer-stardist
+docker compose up --build consumer-llama
+```
+
+---
+
+## Environment Configuration
+
+Each service reads config from environment variables via `pydantic-settings`:
+
+```env
+RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
+ANALYSIS_SERVICE_URL=http://analysis-service:8080
+```
+
+> ⚠️ Never commit real credentials. Use `.env` files or secrets management.
+
+---
+
+## Related Repositories
+
+| Repo | Description |
+|---|---|
+| [histovis-app](https://github.com/hashcr/histovis-app) | Ionic/Angular frontend |
+| [histovis-monorepo](https://github.com/hashcr/histovis-monorepo) | Java Spring Boot backend (analysis-service, API gateway) |
+
+---
+
+## Academic References
+
+- **StarDist:** Schmidt et al., MICCAI 2018; Weigert et al., Nature Methods 2022
+- **DAB Color Deconvolution:** Ruifrok & Johnston, Analytical and Quantitative Cytology and Histology, 2001
+
+---
 
 ## License
 
-This project is licensed under the
-**Creative Commons Attribution-NonCommercial 4.0 International (CC BY-NC 4.0)**.
+This project is licensed under **CC BY-NC 4.0**.
+See the [LICENSE](./LICENSE) file for details.
 
-[![License: CC BY-NC 4.0](https://img.shields.io/badge/License-CC%20BY--NC%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc/4.0/)
-
-You are free to **use, fork, and modify** this project for non-commercial purposes,
-as long as you **credit Ashuin Sharma as the original creator**.
-
-**Commercial use is not permitted** without prior written permission from the author.
-
-See the [LICENSE](./LICENSE) file for full details.
-
----
-
-## Attribution
-
-If you use or build upon HistoVis in your work, please credit it as follows:
-
-> HistoVis — originally created by **Ashuin Sharma**
-> GitHub: https://github.com/hashcr
-
----
-
-## Commercial Licensing
-
-Interested in using HistoVis in a commercial product or service?
-Get in touch to discuss licensing options:
-
-📧 **ashuin.sharma@gmail.com**
+Commercial use requires written permission from the author.
 
 ---
 
@@ -155,28 +151,3 @@ Get in touch to discuss licensing options:
 
 **Ashuin Sharma**
 📧 ashuin.sharma@gmail.com
-
----
-
-## Third-Party Licenses
-
-This project makes use of the following open-source libraries:
-
-| Library | License |
-|---|---|
-| StarDist | BSD-2-Clause |
-| aio-pika | Apache 2.0 |
-| Spring Boot | Apache 2.0 |
-| scikit-image | BSD-3-Clause |
-| llama-cpp-python | MIT |
-| Ionic/Angular | MIT |
-
-All third-party licenses are compatible with the non-commercial use terms of this project.
-
-# Shell into a running container
-docker compose exec consumer-stardist bash
-```
-
----
-
-Author: Ashuin Sharma
