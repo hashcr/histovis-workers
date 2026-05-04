@@ -1,0 +1,10 @@
+.git
+.venv-wsl
+.idea
+.env
+consumer-qwen/models/
+consumer-qwen/logs/
+consumer-stardist/logs/
+**/__pycache__
+**/*.pyc
+**/*.pyo

@@ -1,0 +1,2 @@
+handlers:
+  he_nuclei_count: handlers.he_nuclei_count.handle_he_nuclei_count

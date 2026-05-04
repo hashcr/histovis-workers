@@ -6,7 +6,5 @@ class Settings(BaseConsumerSettings):
     rabbitmq_routing_key: str = "job.qwen.*"
     model_path: str = "models/qwen2.5-0.5b-instruct-q5_k_m.gguf"
 
-    model_config = SettingsConfigDict(env_file=".env")
-
 settings = Settings()
 

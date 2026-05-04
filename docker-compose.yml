@@ -1,0 +1,37 @@
+services:
+  consumer-qwen:
+    build:
+      context: .
+      dockerfile: consumer-qwen/Dockerfile
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      # Qwen GGUF model — never bundled in the image, mounted read-only from host
+      - ./consumer-qwen/models:/app/models:ro
+    networks:
+      - histovis-network
+    restart: unless-stopped
+
+  consumer-stardist:
+    build:
+      context: .
+      dockerfile: consumer-stardist/Dockerfile
+    ports:
+      - "8001:8001"
+    env_file:
+      - .env
+    volumes:
+      # StarDist auto-downloads 2D_versatile_he on first start; persist across restarts
+      - stardist_cache:/root/.stardist
+    networks:
+      - histovis-network
+    restart: unless-stopped
+
+volumes:
+  stardist_cache:
+
+networks:
+  histovis-network:
+    external: true

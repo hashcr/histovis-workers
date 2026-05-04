@@ -1,9 +1,9 @@
 FROM python:3.12-slim
 
-# llama-cpp-python compiles C++ extensions at install time
+# Required by NumPy (OpenMP) and some TF I/O operations (GLib)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    cmake \
+    libgomp1 \
+    libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -12,9 +12,9 @@ WORKDIR /app
 # from WORKDIR /app that path resolves to /consumer-common.
 COPY consumer-common/ /consumer-common/
 
-COPY consumer-qwen/requirements.txt ./requirements.txt
+COPY consumer-stardist/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY consumer-qwen/ .
+COPY consumer-stardist/ .
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8001"]
