@@ -14,7 +14,7 @@ class BaseConsumerSettings(BaseSettings):
     @property
     def rabbitmq_url(self) -> str:
         return (
-            f"ampq://{self.rabbitmq_user}:{self.rabbitmq_password}"
+            f"amqp://{self.rabbitmq_user}:{self.rabbitmq_password}"
             f"@{self.rabbitmq_host}:{self.rabbitmq_port}/"
         )
 
