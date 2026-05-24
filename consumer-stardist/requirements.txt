@@ -3,6 +3,7 @@
 # to lock all transitive deps too.
 
 aio-pika==9.6.2
+setuptools
 csbdeep==0.8.0
 fastapi==0.115.6
 httpx==0.28.1
