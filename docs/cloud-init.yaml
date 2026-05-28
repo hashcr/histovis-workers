@@ -49,7 +49,7 @@ runcmd:
     RABBITMQ_HOST=shark.rmq.cloudamqp.com
     RABBITMQ_PORT=5671
     RABBITMQ_USER=adtgtthi
-    RABBITMQ_PASSWORD=fY1YluNNPgYkkCOqlGQc5pLGoxTnMhvm
+    RABBITMQ_PASSWORD=<ENTER PASSWD>
     RABBITMQ_SSL=true
     RABBITMQ_VHOST=adtgtthi
     RABBITMQ_EXCHANGE=analysis.exchange
