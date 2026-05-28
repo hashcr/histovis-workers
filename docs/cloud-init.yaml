@@ -1,0 +1,64 @@
+#cloud-config
+#
+# DigitalOcean Droplet user-data for histovis-workers
+#
+# What this script does (fully automated on first boot):
+#   1. Installs Docker + Compose plugin
+#   2. Clones https://github.com/hashcr/histovis-workers into /opt/histovis-workers
+#   3. Creates the Qwen model directory
+#   4. Downloads the Qwen2.5-0.5B-Instruct Q5_K_M GGUF from HuggingFace (~400 MB)
+#   5. Writes the .env with the production credentials below
+#   6. Creates the external Docker network histovis-network
+#   7. Runs docker compose up -d --build
+#
+# Prerequisites before creating the Droplet:
+#   - Ubuntu 22.04 (Jammy) image recommended
+#   - No action needed for .env — credentials are embedded below
+
+runcmd:
+  # ── 1. Docker prerequisites ──────────────────────────────────────────────
+  - apt-get update -y
+  - apt-get install -y ca-certificates curl gnupg git
+  - install -m 0755 -d /etc/apt/keyrings
+  - curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+  - chmod a+r /etc/apt/keyrings/docker.gpg
+  - >
+    echo
+    "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg]
+    https://download.docker.com/linux/ubuntu
+    $(. /etc/os-release && echo "$VERSION_CODENAME") stable"
+    | tee /etc/apt/sources.list.d/docker.list > /dev/null
+  - apt-get update -y
+  - apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+  # ── 2. Clone repo ────────────────────────────────────────────────────────
+  - git clone https://github.com/hashcr/histovis-workers /opt/histovis-workers
+
+  # ── 3. Create Qwen model directory ───────────────────────────────────────
+  - mkdir -p /opt/histovis-workers/consumer-qwen/models
+
+  # ── 4. Download Qwen2.5-0.5B-Instruct Q5_K_M GGUF ───────────────────────
+  - >
+    curl -L --progress-bar
+    -o /opt/histovis-workers/consumer-qwen/models/qwen2.5-0.5b-instruct-q5_k_m.gguf
+    https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q5_k_m.gguf
+
+  # ── 5. Write .env ─────────────────────────────────────────────────────────
+  - |
+    cat > /opt/histovis-workers/.env << 'EOF'
+    RABBITMQ_HOST=shark.rmq.cloudamqp.com
+    RABBITMQ_PORT=5671
+    RABBITMQ_USER=adtgtthi
+    RABBITMQ_PASSWORD=fY1YluNNPgYkkCOqlGQc5pLGoxTnMhvm
+    RABBITMQ_SSL=true
+    RABBITMQ_VHOST=adtgtthi
+    RABBITMQ_EXCHANGE=analysis.exchange
+    ANALYSIS_SERVICE_URL=https://analysis-service-9z2b.onrender.com
+    MODEL_PATH=models/qwen2.5-0.5b-instruct-q5_k_m.gguf
+    EOF
+
+  # ── 6. Create external Docker network ────────────────────────────────────
+  - docker network create histovis-network
+
+  # ── 7. Start services ─────────────────────────────────────────────────────
+  - cd /opt/histovis-workers && docker compose up -d --build
