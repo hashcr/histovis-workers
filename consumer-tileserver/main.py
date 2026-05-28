@@ -1,11 +1,14 @@
-import asyncio
+import io
 import logging
 import logging.handlers
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 import aio_pika
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import Response
+from openslide import OpenSlide
+from openslide.deepzoom import DeepZoomGenerator
 
 from settings import settings
 
@@ -27,15 +30,35 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
+_slides: dict[str, DeepZoomGenerator] = {}
+
+
+def register_slide(image_id: str) -> None:
+    """Open an .svs from slides_dir and make it available for tile serving."""
+    svs_path = Path(settings.slides_dir) / f"{image_id}.svs"
+    if not svs_path.exists():
+        raise FileNotFoundError(svs_path)
+    _slides[image_id] = DeepZoomGenerator(OpenSlide(str(svs_path)))
+    logger.info("Registered slide | image_id=%s", image_id)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Starting consumer-tileserver")
+
+    slides_dir = Path(settings.slides_dir)
+    slides_dir.mkdir(parents=True, exist_ok=True)
+    for svs_file in sorted(slides_dir.glob("*.svs")):
+        register_slide(svs_file.stem)
+    logger.info("Loaded %d slide(s) from %s", len(_slides), slides_dir)
+
     logger.info("Connecting to RabbitMQ at %s", settings.rabbitmq_host)
     connection = await aio_pika.connect_robust(settings.rabbitmq_url)
     app.state.rabbitmq = connection
     logger.info("RabbitMQ connected — queue: %s", settings.rabbitmq_queue)
+
     yield
+
     await connection.close()
     logger.info("Stopping consumer-tileserver")
 
@@ -45,7 +68,34 @@ app = FastAPI(lifespan=lifespan)
 
 @app.get("/health")
 async def health():
-    return {"status": "up"}
+    return {"status": "up", "slides": list(_slides.keys())}
+
+
+@app.get("/slides/{image_id}.dzi")
+async def get_dzi(image_id: str):
+    if image_id not in _slides:
+        raise HTTPException(status_code=404, detail=f"Slide '{image_id}' not found")
+    return Response(content=_slides[image_id].get_dzi("jpeg"), media_type="application/xml")
+
+
+@app.get("/slides/{image_id}_files/{level}/{tile_name}")
+async def get_tile(image_id: str, level: int, tile_name: str):
+    if image_id not in _slides:
+        raise HTTPException(status_code=404, detail=f"Slide '{image_id}' not found")
+
+    try:
+        col, row = map(int, tile_name.removesuffix(".jpeg").removesuffix(".jpg").split("_"))
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Invalid tile name: {tile_name}")
+
+    try:
+        tile = _slides[image_id].get_tile(level, (col, row))
+    except Exception:
+        raise HTTPException(status_code=404, detail="Tile not found")
+
+    buf = io.BytesIO()
+    tile.save(buf, format="JPEG")
+    return Response(content=buf.getvalue(), media_type="image/jpeg")
 
 
 if __name__ == "__main__":

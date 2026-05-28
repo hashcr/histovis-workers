@@ -4,6 +4,5 @@ httpx
 openslide-bin
 openslide-python
 pydantic-settings
-tiatoolbox
 uvicorn
 -e ../consumer-common
