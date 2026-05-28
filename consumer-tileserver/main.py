@@ -1,6 +1,7 @@
 import io
 import logging
 import logging.handlers
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -44,6 +45,10 @@ def register_slide(image_id: str) -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    import asyncio
+    loop = asyncio.get_event_loop()
+    loop.set_default_executor(ThreadPoolExecutor(max_workers=100))
+
     logger.info("Starting consumer-tileserver")
 
     slides_dir = Path(settings.slides_dir)
@@ -72,14 +77,14 @@ async def health():
 
 
 @app.get("/slides/{image_id}.dzi")
-async def get_dzi(image_id: str):
+def get_dzi(image_id: str):
     if image_id not in _slides:
         raise HTTPException(status_code=404, detail=f"Slide '{image_id}' not found")
     return Response(content=_slides[image_id].get_dzi("jpeg"), media_type="application/xml")
 
 
 @app.get("/slides/{image_id}_files/{level}/{tile_name}")
-async def get_tile(image_id: str, level: int, tile_name: str):
+def get_tile(image_id: str, level: int, tile_name: str):
     if image_id not in _slides:
         raise HTTPException(status_code=404, detail=f"Slide '{image_id}' not found")
 
