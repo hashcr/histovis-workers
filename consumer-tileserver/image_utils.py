@@ -23,6 +23,7 @@ def make_thumbnail(svs_path: Path, size: tuple[int, int] = (512, 512)) -> bytes:
 
 
 async def download_slide(image_id: str, image_url: str, svs_path: Path) -> None:
+    image_url = image_url.replace(settings.minio_public_endpoint, settings.minio_internal_endpoint)
     logger.info("Downloading slide | image_id=%s | url=%s", image_id, image_url)
     try:
         async with httpx.AsyncClient(timeout=None) as client:

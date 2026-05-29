@@ -34,7 +34,7 @@ services:
       context: .
       dockerfile: consumer-tileserver/Dockerfile
     ports:
-      - "8100:8100"
+      - "8002:8002"
     env_file:
       - .env
     volumes:

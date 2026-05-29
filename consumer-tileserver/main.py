@@ -8,6 +8,7 @@ from pathlib import Path
 
 import aio_pika
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 
 from consumer import start_consumer
@@ -60,6 +61,13 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["GET"],
+    allow_headers=["*"],
+)
+
 
 @app.get("/health")
 async def health():
@@ -95,4 +103,4 @@ def get_tile(image_id: str, level: int, tile_name: str):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8100, reload=False)
+    uvicorn.run("main:app", host="0.0.0.0", port=8002, reload=False)
