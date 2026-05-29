@@ -20,8 +20,9 @@ logger = logging.getLogger(__name__)
 _model: StarDist2D | None = None
 
 
-def fetch_image(imge_url: str) -> np.ndarray:
-    get_image_response = httpx.get(imge_url, timeout=30.0)
+def fetch_image(image_url: str) -> np.ndarray:
+    image_url = image_url.replace(settings.minio_public_endpoint, settings.minio_internal_endpoint)
+    get_image_response = httpx.get(image_url, timeout=30.0)
     get_image_response.raise_for_status()
     image = Image.open(BytesIO(get_image_response.content)).convert("RGB")
     return np.array(image)

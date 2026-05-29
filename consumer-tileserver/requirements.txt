@@ -1,0 +1,8 @@
+aio-pika
+fastapi
+httpx
+openslide-bin
+openslide-python
+pydantic-settings
+uvicorn
+-e ../consumer-common

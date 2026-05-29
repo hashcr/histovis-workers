@@ -29,8 +29,23 @@ services:
       - histovis-network
     restart: unless-stopped
 
+  consumer-tileserver:
+    build:
+      context: .
+      dockerfile: consumer-tileserver/Dockerfile
+    ports:
+      - "8002:8002"
+    env_file:
+      - .env
+    volumes:
+      - tileserver_slides:/app/slides
+    networks:
+      - histovis-network
+    restart: unless-stopped
+
 volumes:
   stardist_cache:
+  tileserver_slides:
 
 networks:
   histovis-network:

@@ -8,14 +8,18 @@ class BaseConsumerSettings(BaseSettings):
     rabbitmq_exchange: str = "analysis.exchange"
     rabbitmq_queue: str = "qwen.queue"
     rabbitmq_routing_key: str = "job.qwen.*"
+    rabbitmq_ssl: bool = False
+    rabbitmq_vhost: str = ""
 
     analysis_service_url: str = "http://analysis-service:8082"
 
     @property
     def rabbitmq_url(self) -> str:
+        scheme = "amqps" if self.rabbitmq_ssl else "amqp"
+        vhost = f"/{self.rabbitmq_vhost}" if self.rabbitmq_vhost else "/"
         return (
-            f"amqp://{self.rabbitmq_user}:{self.rabbitmq_password}"
-            f"@{self.rabbitmq_host}:{self.rabbitmq_port}/"
+            f"{scheme}://{self.rabbitmq_user}:{self.rabbitmq_password}"
+            f"@{self.rabbitmq_host}:{self.rabbitmq_port}{vhost}"
         )
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
