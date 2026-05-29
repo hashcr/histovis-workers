@@ -9,6 +9,7 @@ description = "Shared library for histovis-workers consumers"
 requires-python = ">=3.11"
 dependencies = [
     "aio-pika",
+    "boto3",
     "httpx",
     "pydantic-settings",
     "pyyaml",
