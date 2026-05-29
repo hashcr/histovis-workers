@@ -1,3 +1,4 @@
+import asyncio
 import io
 import logging
 import logging.handlers
@@ -8,10 +9,10 @@ from pathlib import Path
 import aio_pika
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import Response
-from openslide import OpenSlide
-from openslide.deepzoom import DeepZoomGenerator
 
+from consumer import start_consumer
 from settings import settings
+from slides import _slides, register_slide
 
 Path("logs").mkdir(exist_ok=True)
 
@@ -31,21 +32,9 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
-_slides: dict[str, DeepZoomGenerator] = {}
-
-
-def register_slide(image_id: str) -> None:
-    """Open an .svs from slides_dir and make it available for tile serving."""
-    svs_path = Path(settings.slides_dir) / f"{image_id}.svs"
-    if not svs_path.exists():
-        raise FileNotFoundError(svs_path)
-    _slides[image_id] = DeepZoomGenerator(OpenSlide(str(svs_path)))
-    logger.info("Registered slide | image_id=%s", image_id)
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    import asyncio
     loop = asyncio.get_event_loop()
     loop.set_default_executor(ThreadPoolExecutor(max_workers=100))
 
@@ -60,6 +49,7 @@ async def lifespan(app: FastAPI):
     logger.info("Connecting to RabbitMQ at %s", settings.rabbitmq_host)
     connection = await aio_pika.connect_robust(settings.rabbitmq_url)
     app.state.rabbitmq = connection
+    asyncio.create_task(start_consumer(connection))
     logger.info("RabbitMQ connected — queue: %s", settings.rabbitmq_queue)
 
     yield
