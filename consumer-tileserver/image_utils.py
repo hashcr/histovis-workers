@@ -47,7 +47,7 @@ async def upload_thumbnail(image_id: str, svs_path: Path) -> str:
             r2_client.upload_bytes,
             jpeg_bytes,
             key,
-            internal_endpoint=settings.minio_internal_endpoint,
+            internal_endpoint=settings.minio_s3_endpoint,
             public_endpoint=settings.minio_public_endpoint,
             access_key=settings.minio_access_key,
             secret_key=settings.minio_secret_key,

@@ -11,6 +11,7 @@ class TileServerSettings(BaseConsumerSettings):
 
     minio_public_endpoint: str = "http://localhost:9000"
     minio_internal_endpoint: str = "http://minio:9000"
+    minio_s3_endpoint: str = "http://minio:9000"
     minio_access_key: str = ""
     minio_secret_key: str = ""
     minio_bucket: str = "histovis-images"
