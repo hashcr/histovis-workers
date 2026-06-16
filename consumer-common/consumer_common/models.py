@@ -4,6 +4,7 @@ from pydantic import BaseModel
 
 class JobMessage(BaseModel):
     jobId: UUID
+    imageId: str = ""
     imageUrl: str
     args: dict[str, str] = {}
 
