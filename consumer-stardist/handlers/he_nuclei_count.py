@@ -1,17 +1,17 @@
 import asyncio
 import logging
 import numpy as np
-from io import BytesIO
+from pathlib import PurePosixPath
+from urllib.parse import urlparse
 
-import httpx
 import json
-from PIL import Image
 from stardist.models import StarDist2D
 from model_loader import get_stardist
 from csbdeep.utils import normalize
 
 from consumer_common.http_client import notify_job_completed, notify_job_failed
 from consumer_common.models import JobMessage
+from consumer_common.tileserver_client import is_svs, fetch_svs_region, fetch_jpeg_region
 
 from settings import settings
 
@@ -20,20 +20,32 @@ logger = logging.getLogger(__name__)
 _model: StarDist2D | None = None
 
 
-def fetch_image(image_url: str) -> np.ndarray:
-    image_url = image_url.replace(settings.minio_public_endpoint, settings.minio_internal_endpoint)
-    get_image_response = httpx.get(image_url, timeout=30.0)
-    get_image_response.raise_for_status()
-    image = Image.open(BytesIO(get_image_response.content)).convert("RGB")
-    return np.array(image)
-
-def run_analysis(image_url: str, args: dict) -> dict:
+def run_analysis(image_id: str, image_url: str, args: dict) -> dict:
     global _model
 
-    image = fetch_image(image_url)
+    region_raw = args.get("region")
+    if not region_raw:
+        raise ValueError("'region' is required in args — send viewport coordinates from the frontend")
+    region = json.loads(region_raw)
 
-    prob_thresh = float(args.get("prob_thresh", "0.5"))
-    nms_thresh = float(args.get("nms_thresh", "0.4"))
+    if not image_id:
+        image_id = PurePosixPath(urlparse(image_url).path).stem
+
+    if is_svs(image_url):
+        logger.info("SVS path | fetching region from tileserver | image_id=%s region=%s", image_id, region)
+        image = fetch_svs_region(image_id, region, tileserver_url=settings.tileserver_internal_url)
+    else:
+        logger.info("JPEG path | downloading and cropping | image_id=%s region=%s", image_id, region)
+        image = fetch_jpeg_region(
+            image_url, region,
+            minio_public_endpoint=settings.minio_public_endpoint,
+            minio_internal_endpoint=settings.minio_internal_endpoint,
+        )
+
+    logger.info("Analysis patch size: %s", image.shape)
+
+    prob_thresh = float(args.get("prob_thresh") or "0.5")
+    nms_thresh = float(args.get("nms_thresh") or "0.4")
 
     image_normalized = normalize(image, 1, 99.8, axis=(0, 1))
 
@@ -51,11 +63,13 @@ def run_analysis(image_url: str, args: dict) -> dict:
         "mean_confidence": round(mean_prob, 4),
         "prob_thresh": prob_thresh,
         "nms_thresh": nms_thresh,
-        "image_shape": image.shape,
+        "image_shape": list(image.shape),
     }
 
-async def handle_he_nuclei_count(message: JobMessage) -> None:
+
+async def handle_he_nuclei_count(body: dict) -> None:
     global _model
+    message = JobMessage(**body)
     logger.info("Handling H&E analysis | job_id: %s", message.job_id)
 
     try:
@@ -65,7 +79,7 @@ async def handle_he_nuclei_count(message: JobMessage) -> None:
 
         result: str = await asyncio.get_running_loop().run_in_executor(
             None,
-            lambda: run_analysis(message.imageUrl, message.args),  # type: ignore[arg-type]
+            lambda: run_analysis(message.imageId, message.imageUrl, message.args),  # type: ignore[arg-type]
         )
 
         logger.info("StarDist Inference completed | job_id=%s | nuclei=%d | confidence=%.4f",

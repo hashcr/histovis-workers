@@ -7,6 +7,7 @@ class Settings(BaseConsumerSettings):
     stardist_model: str = "2D_versatile_he"
     minio_public_endpoint: str = "http://localhost:9000"
     minio_internal_endpoint: str = "http://minio:9000"
+    tileserver_internal_url: str = "http://consumer-tileserver:8002"
 
     model_config = SettingsConfigDict(env_file=".env")
 

@@ -10,6 +10,7 @@ services:
     volumes:
       # Qwen GGUF model — never bundled in the image, mounted read-only from host
       - ./consumer-qwen/models:/app/models:ro
+      - plugins_cache:/app/plugins
     networks:
       - histovis-network
     restart: unless-stopped
@@ -25,6 +26,7 @@ services:
     volumes:
       # StarDist auto-downloads 2D_versatile_he on first start; persist across restarts
       - stardist_cache:/root/.stardist
+      - plugins_cache:/app/plugins
     networks:
       - histovis-network
     restart: unless-stopped
@@ -39,6 +41,7 @@ services:
       - .env
     volumes:
       - tileserver_slides:/app/slides
+      - plugins_cache:/app/plugins
     networks:
       - histovis-network
     restart: unless-stopped
@@ -46,6 +49,7 @@ services:
 volumes:
   stardist_cache:
   tileserver_slides:
+  plugins_cache:
 
 networks:
   histovis-network:

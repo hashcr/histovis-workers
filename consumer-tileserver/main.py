@@ -101,6 +101,16 @@ def get_tile(image_id: str, level: int, tile_name: str):
     return Response(content=buf.getvalue(), media_type="image/jpeg")
 
 
+@app.get("/slides/{image_id}/region")
+def get_region(image_id: str, x: int, y: int, width: int, height: int):
+    if image_id not in _slides:
+        raise HTTPException(status_code=404, detail=f"Slide '{image_id}' not found")
+    region = _slides[image_id]._osr.read_region((x, y), 0, (width, height)).convert("RGB")
+    buf = io.BytesIO()
+    region.save(buf, format="JPEG", quality=90)
+    return Response(content=buf.getvalue(), media_type="image/jpeg")
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8002, reload=False)

@@ -2,6 +2,26 @@ import boto3
 from botocore.config import Config
 
 
+def download_bytes(
+    key: str,
+    *,
+    s3_endpoint: str,
+    access_key: str,
+    secret_key: str,
+    bucket: str,
+) -> bytes:
+    s3 = boto3.client(
+        "s3",
+        endpoint_url=s3_endpoint,
+        aws_access_key_id=access_key,
+        aws_secret_access_key=secret_key,
+        config=Config(signature_version="s3v4"),
+        region_name="auto",
+    )
+    response = s3.get_object(Bucket=bucket, Key=key)
+    return response["Body"].read()
+
+
 def upload_bytes(
     data: bytes,
     key: str,
