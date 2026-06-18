@@ -13,6 +13,14 @@ async def notify_job_failed(analysis_service_url: str, job_id: str, output: str)
 async def notify_job_running(analysis_service_url: str, job_id: str, output: str) -> None:
     await _update_job_result(analysis_service_url, job_id, status="RUNNING", output=output)
 
+async def update_plugin_status(analysis_service_url: str, plugin_id: str, status: str) -> None:
+    url = f"{analysis_service_url}/api/analysis/plugins/{plugin_id}/status"
+    logger.info("Updating plugin status | plugin_id=%s | status=%s", plugin_id, status)
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        response = await client.put(url, json={"status": status})
+        response.raise_for_status()
+    logger.info("Plugin status updated | plugin_id=%s | status=%s", plugin_id, status)
+
 async def _update_job_result(analysis_service_url: str, job_id: str, status: str, output: str) -> None:
     url = f"{analysis_service_url}/api/analysis/jobs/{job_id}/result"
 

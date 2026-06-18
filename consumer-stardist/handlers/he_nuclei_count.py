@@ -67,8 +67,9 @@ def run_analysis(image_id: str, image_url: str, args: dict) -> dict:
     }
 
 
-async def handle_he_nuclei_count(message: JobMessage) -> None:
+async def handle_he_nuclei_count(body: dict) -> None:
     global _model
+    message = JobMessage(**body)
     logger.info("Handling H&E analysis | job_id: %s", message.job_id)
 
     try:

@@ -5,10 +5,8 @@ from collections.abc import Callable
 
 import aio_pika
 from aio_pika.abc import AbstractIncomingMessage
-from pydantic import ValidationError
 
 from consumer_common.settings import BaseConsumerSettings
-from consumer_common.models import JobMessage
 
 logger = logging.getLogger(__name__)
 
@@ -24,16 +22,6 @@ class MessageConsumer:
                 routing_key = message.routing_key
                 plugin_code = routing_key.split(".")[-1]
 
-                try:
-                    job_message = JobMessage(**body)
-                except ValidationError as e:
-                    logger.error(
-                        "Invalid message shape | plugin_code=%s | error=%s",
-                        plugin_code,
-                        e,
-                    )
-                    return
-
                 logger.info(
                     "Received message | routing_key=%s | jobId=%s | plugin_code=%s",
                     routing_key,
@@ -47,11 +35,36 @@ class MessageConsumer:
                     logger.error("No handler suitable for plugin code: '%s'", plugin_code)
                     return
 
-                await handler(job_message)
+                await handler(body)
 
             except Exception as e:
                 logger.error("Failed to process message:  %s", e)
                 raise
+
+
+async def publish_message(
+    routing_key: str,
+    body: dict,
+    *,
+    settings: BaseConsumerSettings,
+) -> None:
+    connection = await aio_pika.connect_robust(settings.rabbitmq_url)
+    async with connection:
+        channel = await connection.channel()
+        exchange = await channel.declare_exchange(
+            settings.rabbitmq_exchange,
+            aio_pika.ExchangeType.TOPIC,
+            durable=True,
+        )
+        await exchange.publish(
+            aio_pika.Message(
+                body=json.dumps(body).encode(),
+                content_type="application/json",
+                delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
+            ),
+            routing_key=routing_key,
+        )
+    logger.info("Published message | routing_key=%s", routing_key)
 
 
 async def start_consuming(

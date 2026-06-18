@@ -32,7 +32,8 @@ def run_inference(llm: Llama, image_url: str, args: dict) -> str:
 
     return response["choices"][0]["message"]["content"]
 
-async def handle_describe_wsi(message: JobMessage) -> None:
+async def handle_describe_wsi(body: dict) -> None:
+    message = JobMessage(**body)
     logger.info("Handling describe_wsi | job_id: %s", message.job_id)
 
     try:

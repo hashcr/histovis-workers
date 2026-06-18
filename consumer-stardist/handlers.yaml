@@ -1,3 +1,4 @@
 handlers:
   he_nuclei_count: handlers.he_nuclei_count.handle_he_nuclei_count
   ihc_positive_cells: handlers.ihc_positive_cells.handle_ihc_positive_cells
+  install: handlers.install_plugin.handle_install

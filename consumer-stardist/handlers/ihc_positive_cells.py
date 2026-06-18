@@ -107,8 +107,9 @@ def run_analysis(image_id: str, image_url: str, args: dict) -> dict:
     }
 
 
-async def handle_ihc_positive_cells(message: JobMessage) -> None:
+async def handle_ihc_positive_cells(body: dict) -> None:
     global _model
+    message = JobMessage(**body)
     logger.info("Handling IHC analysis | job_id: %s", message.job_id)
 
     try:

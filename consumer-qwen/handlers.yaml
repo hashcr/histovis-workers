@@ -1,2 +1,4 @@
 handlers:
   describe_wsi: handlers.describe_wsi.handle_describe_wsi
+  verify_plugin: handlers.verify_plugin.handle_verify_plugin
+  install: handlers.install_plugin.handle_install
