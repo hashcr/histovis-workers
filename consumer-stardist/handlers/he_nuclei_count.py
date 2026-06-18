@@ -44,8 +44,8 @@ def run_analysis(image_id: str, image_url: str, args: dict) -> dict:
 
     logger.info("Analysis patch size: %s", image.shape)
 
-    prob_thresh = float(args.get("prob_thresh", "0.5"))
-    nms_thresh = float(args.get("nms_thresh", "0.4"))
+    prob_thresh = float(args.get("prob_thresh") or "0.5")
+    nms_thresh = float(args.get("nms_thresh") or "0.4")
 
     image_normalized = normalize(image, 1, 99.8, axis=(0, 1))
 
