@@ -11,6 +11,8 @@ dependencies = [
     "aio-pika",
     "boto3",
     "httpx",
+    "numpy>=1.24",
+    "Pillow>=10.0",
     "pydantic-settings",
     "pyyaml",
 ]

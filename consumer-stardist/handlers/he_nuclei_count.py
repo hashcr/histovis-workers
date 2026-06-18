@@ -1,48 +1,23 @@
 import asyncio
 import logging
 import numpy as np
-from io import BytesIO
 from pathlib import PurePosixPath
 from urllib.parse import urlparse
 
-import httpx
 import json
-from PIL import Image
 from stardist.models import StarDist2D
 from model_loader import get_stardist
 from csbdeep.utils import normalize
 
 from consumer_common.http_client import notify_job_completed, notify_job_failed
 from consumer_common.models import JobMessage
+from consumer_common.tileserver_client import is_svs, fetch_svs_region, fetch_jpeg_region
 
 from settings import settings
 
 logger = logging.getLogger(__name__)
 
 _model: StarDist2D | None = None
-
-def _is_svs(image_url: str) -> bool:
-    return PurePosixPath(urlparse(image_url).path).suffix.lower() == ".svs"
-
-
-def fetch_svs_region(image_id: str, region: dict) -> np.ndarray:
-    url = (
-        f"{settings.tileserver_internal_url}/slides/{image_id}/region"
-        f"?x={region['x']}&y={region['y']}&width={region['width']}&height={region['height']}"
-    )
-    resp = httpx.get(url, timeout=30.0)
-    resp.raise_for_status()
-    return np.array(Image.open(BytesIO(resp.content)).convert("RGB"))
-
-
-def fetch_jpeg_region(image_url: str, region: dict) -> np.ndarray:
-    image_url = image_url.replace(settings.minio_public_endpoint, settings.minio_internal_endpoint)
-    Image.MAX_IMAGE_PIXELS = None  # trusted internal source
-    resp = httpx.get(image_url, timeout=60.0)
-    resp.raise_for_status()
-    img = Image.open(BytesIO(resp.content)).convert("RGB")
-    x, y, w, h = region["x"], region["y"], region["width"], region["height"]
-    return np.array(img.crop((x, y, x + w, y + h)))
 
 
 def run_analysis(image_id: str, image_url: str, args: dict) -> dict:
@@ -56,12 +31,16 @@ def run_analysis(image_id: str, image_url: str, args: dict) -> dict:
     if not image_id:
         image_id = PurePosixPath(urlparse(image_url).path).stem
 
-    if _is_svs(image_url):
+    if is_svs(image_url):
         logger.info("SVS path | fetching region from tileserver | image_id=%s region=%s", image_id, region)
-        image = fetch_svs_region(image_id, region)
+        image = fetch_svs_region(image_id, region, tileserver_url=settings.tileserver_internal_url)
     else:
         logger.info("JPEG path | downloading and cropping | image_id=%s region=%s", image_id, region)
-        image = fetch_jpeg_region(image_url, region)
+        image = fetch_jpeg_region(
+            image_url, region,
+            minio_public_endpoint=settings.minio_public_endpoint,
+            minio_internal_endpoint=settings.minio_internal_endpoint,
+        )
 
     logger.info("Analysis patch size: %s", image.shape)
 

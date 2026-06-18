@@ -31,5 +31,5 @@ def load_model_async() -> None:
 
 def get_llm() -> Llama:
     if llm is None:
-        raise RuntimeError("Gwen 0.5B Model not ready yet.")
+        raise RuntimeError("Qwen 0.5B Model not ready yet.")
     return llm
