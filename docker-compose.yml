@@ -8,8 +8,9 @@ services:
     env_file:
       - .env
     volumes:
-      # Qwen GGUF model — never bundled in the image
-      - ./consumer-qwen/models:/app/models
+      # Qwen GGUF model — never bundled in the image; entrypoint.sh downloads it
+      # from Hugging Face on first start and caches it here across restarts
+      - qwen_models:/app/models
       - plugins_cache:/app/plugins
     networks:
       - histovis-network
@@ -50,6 +51,7 @@ volumes:
   stardist_cache:
   tileserver_slides:
   plugins_cache:
+  qwen_models:
 
 networks:
   histovis-network:
