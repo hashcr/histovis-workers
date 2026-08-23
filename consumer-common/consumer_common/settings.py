@@ -12,6 +12,7 @@ class BaseConsumerSettings(BaseSettings):
     rabbitmq_vhost: str = ""
 
     analysis_service_url: str = "http://analysis-service:8082"
+    plugins_installed_dir: str = "/app/plugins/installed"
 
     @property
     def rabbitmq_url(self) -> str:
