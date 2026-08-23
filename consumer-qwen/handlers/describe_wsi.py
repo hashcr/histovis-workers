@@ -1,6 +1,8 @@
 import asyncio
+import base64
 import logging
 
+import httpx
 from llama_cpp import Llama
 from llama_cpp.llama_types import ChatCompletionRequestSystemMessage, ChatCompletionRequestUserMessage
 
@@ -15,12 +17,27 @@ SYSTEM_PROMPT = """You are a pathology assistant specialized in analyzing histop
 You provide clear, concise, and clinically relevant descriptions of tissue samples.
 Always structure your response with: tissue type, morphological findings, and notable observations."""
 
+def fetch_image_data_uri(image_url: str) -> str:
+    internal_url = image_url.replace(settings.minio_public_endpoint, settings.minio_internal_endpoint)
+    response = httpx.get(internal_url, timeout=30.0)
+    response.raise_for_status()
+    content_type = response.headers.get("content-type", "image/jpeg")
+    encoded = base64.b64encode(response.content).decode("utf-8")
+    return f"data:{content_type};base64,{encoded}"
+
 def run_inference(llm: Llama, image_url: str, args: dict) -> str:
     prompt = args.get("prompt", "Describe the histopathology findings in this image.")
+    image_data_uri = fetch_image_data_uri(image_url)
 
     messages = [
         ChatCompletionRequestSystemMessage(role="system", content=SYSTEM_PROMPT),
-        ChatCompletionRequestUserMessage(role="user", content=f"{prompt}\n\nImage URL: {image_url}"),
+        ChatCompletionRequestUserMessage(
+            role="user",
+            content=[
+                {"type": "text", "text": prompt},
+                {"type": "image_url", "image_url": {"url": image_data_uri}},
+            ],
+        ),
     ]
 
     response = llm.create_chat_completion(
