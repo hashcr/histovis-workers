@@ -1,7 +1,13 @@
+import sys
+from pathlib import Path
+
+_installed = Path("/app/plugins/installed")
+_installed.mkdir(parents=True, exist_ok=True)
+sys.path.insert(0, str(_installed))
+
 import asyncio
 import logging
 import logging.handlers
-from pathlib import Path
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
