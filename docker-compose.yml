@@ -4,7 +4,7 @@ services:
       context: .
       dockerfile: consumer-qwen/Dockerfile
     ports:
-      - "8000:8000"
+      - "8090:8090"
     env_file:
       - .env
     volumes:
@@ -20,7 +20,7 @@ services:
       context: .
       dockerfile: consumer-stardist/Dockerfile
     ports:
-      - "8001:8001"
+      - "8091:8091"
     env_file:
       - .env
     volumes:
@@ -36,7 +36,7 @@ services:
       context: .
       dockerfile: consumer-tileserver/Dockerfile
     ports:
-      - "8002:8002"
+      - "8092:8092"
     env_file:
       - .env
     volumes:
