@@ -7,6 +7,23 @@ import yaml
 
 logger = logging.getLogger(__name__)
 
+
+def load_dynamic_handlers(plugins_dir: str) -> dict[str, Callable]:
+    path = Path(plugins_dir)
+    if not path.exists():
+        return {}
+    handlers = {}
+    for py_file in sorted(path.glob("*.py")):
+        plugin_code = py_file.stem
+        try:
+            module = importlib.import_module(plugin_code)
+            handlers[plugin_code] = getattr(module, "handle")
+            logger.info("Registered dynamic handler | plugin_code=%s", plugin_code)
+        except (ImportError, AttributeError) as e:
+            logger.error("Failed to load dynamic handler | plugin_code=%s | error=%s", plugin_code, e)
+    return handlers
+
+
 def load_handlers(config_path: str = "handlers.yaml") -> dict[str, Callable]:
     path = Path(config_path)
 
