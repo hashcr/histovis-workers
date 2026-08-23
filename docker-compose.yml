@@ -8,8 +8,8 @@ services:
     env_file:
       - .env
     volumes:
-      # Qwen GGUF model — never bundled in the image, mounted read-only from host
-      - ./consumer-qwen/models:/app/models:ro
+      # Qwen GGUF model — never bundled in the image
+      - ./consumer-qwen/models:/app/models
       - plugins_cache:/app/plugins
     networks:
       - histovis-network
