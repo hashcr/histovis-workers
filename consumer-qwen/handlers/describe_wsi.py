@@ -43,9 +43,17 @@ def get_region_image(image_id: str, image_url: str, args: dict) -> np.ndarray:
             minio_internal_endpoint=settings.minio_internal_endpoint,
         )
 
+MAX_IMAGE_DIMENSION = 1024
+
 def image_to_data_uri(image: np.ndarray) -> str:
+    pil_image = Image.fromarray(image)
+    if max(pil_image.size) > MAX_IMAGE_DIMENSION:
+        original_size = pil_image.size
+        pil_image.thumbnail((MAX_IMAGE_DIMENSION, MAX_IMAGE_DIMENSION), Image.LANCZOS)
+        logger.info("Resized region for inference | %s -> %s", original_size, pil_image.size)
+
     buf = BytesIO()
-    Image.fromarray(image).save(buf, format="JPEG")
+    pil_image.save(buf, format="JPEG")
     encoded = base64.b64encode(buf.getvalue()).decode("utf-8")
     return f"data:image/jpeg;base64,{encoded}"
 
