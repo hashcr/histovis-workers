@@ -12,6 +12,7 @@ class Settings(BaseConsumerSettings):
     minio_access_key: str = "minioadmin"
     minio_secret_key: str = "minioadmin123"
     minio_bucket: str = "histovis-images"
+    tileserver_internal_url: str = "http://consumer-tileserver:8002"
     plugins_dir: str = "/app/plugins"
 
 settings = Settings()

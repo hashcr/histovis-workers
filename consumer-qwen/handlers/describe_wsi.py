@@ -1,13 +1,19 @@
 import asyncio
 import base64
+import json
 import logging
+from io import BytesIO
+from pathlib import PurePosixPath
+from urllib.parse import urlparse
 
-import httpx
+import numpy as np
+from PIL import Image
 from llama_cpp import Llama
 from llama_cpp.llama_types import ChatCompletionRequestSystemMessage, ChatCompletionRequestUserMessage
 
 from consumer_common.http_client import notify_job_completed, notify_job_failed
 from consumer_common.models import JobMessage
+from consumer_common.tileserver_client import is_svs, fetch_svs_region, fetch_jpeg_region
 from model_loader import get_llm
 from settings import settings
 
@@ -17,17 +23,36 @@ SYSTEM_PROMPT = """You are a pathology assistant specialized in analyzing histop
 You provide clear, concise, and clinically relevant descriptions of tissue samples.
 Always structure your response with: tissue type, morphological findings, and notable observations."""
 
-def fetch_image_data_uri(image_url: str) -> str:
-    internal_url = image_url.replace(settings.minio_public_endpoint, settings.minio_internal_endpoint)
-    response = httpx.get(internal_url, timeout=30.0)
-    response.raise_for_status()
-    content_type = response.headers.get("content-type", "image/jpeg")
-    encoded = base64.b64encode(response.content).decode("utf-8")
-    return f"data:{content_type};base64,{encoded}"
+def get_region_image(image_id: str, image_url: str, args: dict) -> np.ndarray:
+    region_raw = args.get("region")
+    if not region_raw:
+        raise ValueError("'region' is required in args — send viewport coordinates from the frontend")
+    region = json.loads(region_raw)
 
-def run_inference(llm: Llama, image_url: str, args: dict) -> str:
+    if not image_id:
+        image_id = PurePosixPath(urlparse(image_url).path).stem
+
+    if is_svs(image_url):
+        logger.info("SVS path | fetching region from tileserver | image_id=%s region=%s", image_id, region)
+        return fetch_svs_region(image_id, region, tileserver_url=settings.tileserver_internal_url)
+    else:
+        logger.info("JPEG path | downloading and cropping | image_id=%s region=%s", image_id, region)
+        return fetch_jpeg_region(
+            image_url, region,
+            minio_public_endpoint=settings.minio_public_endpoint,
+            minio_internal_endpoint=settings.minio_internal_endpoint,
+        )
+
+def image_to_data_uri(image: np.ndarray) -> str:
+    buf = BytesIO()
+    Image.fromarray(image).save(buf, format="JPEG")
+    encoded = base64.b64encode(buf.getvalue()).decode("utf-8")
+    return f"data:image/jpeg;base64,{encoded}"
+
+def run_inference(llm: Llama, image_id: str, image_url: str, args: dict) -> str:
     prompt = args.get("prompt", "Describe the histopathology findings in this image.")
-    image_data_uri = fetch_image_data_uri(image_url)
+    region_image = get_region_image(image_id, image_url, args)
+    image_data_uri = image_to_data_uri(region_image)
 
     messages = [
         ChatCompletionRequestSystemMessage(role="system", content=SYSTEM_PROMPT),
@@ -60,7 +85,7 @@ async def handle_describe_wsi(body: dict) -> None:
 
         future: asyncio.Future = asyncio.get_running_loop().run_in_executor(
             None,
-            lambda: run_inference(llm, message.imageUrl, message.args),  # type: ignore[arg-type]
+            lambda: run_inference(llm, message.imageId, message.imageUrl, message.args),  # type: ignore[arg-type]
         )
         output: str = await future
 
