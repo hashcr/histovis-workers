@@ -1,0 +1,161 @@
+# docker-compose.yaml — self-sufficient deployment file for histovis-workers
+#
+# Goal: deploy this with Coolify (or plain `docker compose up`) on a brand-new VM
+# and have it work with ZERO .env file, using only the defaults baked in below.
+#
+# This stack MUST be deployed alongside histovis-monorepo (shares the same
+# `histovis-network` and talks to its postgres/rabbitmq/minio/analysis-service/
+# images-service over that network by container hostname) — see DEPLOY.md in
+# this repo for the full two-repo deployment order and the manual steps Coolify
+# does not automate (HTTPS domain routing).
+#
+# The only thing you should need to change for a new deployment is the
+# PUBLIC_DOMAIN variable (see the copy-paste env block at the bottom of this
+# file, or DEPLOY.md) — everything domain-derived below reads from it.
+
+services:
+  consumer-qwen:
+    build:
+      context: .
+      dockerfile: consumer-qwen/Dockerfile
+    environment:
+      # RabbitMQ credentials have safe defaults matching consumer-common's own
+      # hardcoded fallback (histovis/histovis47205!@%) — only override if you actually
+      # changed the broker's password. If you do, note that changing this value
+      # alone does NOT update an existing RabbitMQ user's password (see the
+      # rabbitmq service comment in histovis-monorepo's docker-compose.yaml).
+      RABBITMQ_HOST: ${RABBITMQ_HOST:-rabbitmq}
+      RABBITMQ_PORT: ${RABBITMQ_PORT:-5672}
+      RABBITMQ_USER: ${RABBITMQ_USER:-histovis}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-histovis47205!@%}
+      RABBITMQ_SSL: ${RABBITMQ_SSL:-false}
+      RABBITMQ_VHOST: ${RABBITMQ_VHOST:-}
+      RABBITMQ_EXCHANGE: ${RABBITMQ_EXCHANGE:-analysis.exchange}
+      # Real internal port of analysis-service — its container-side port must match
+      # its own host-side port (see histovis-monorepo's docker-compose.yaml), so this
+      # is not the Spring Boot default (8082), it's the collision-avoiding one (8087).
+      ANALYSIS_SERVICE_URL: ${ANALYSIS_SERVICE_URL:-http://analysis-service:8087}
+      IMAGE_SERVICE_URL: ${IMAGE_SERVICE_URL:-http://images-service:8086}
+      MODEL_PATH: ${MODEL_PATH:-models/Qwen3VL-2B-Instruct-Q4_K_M.gguf}
+      MMPROJ_PATH: ${MMPROJ_PATH:-models/mmproj-Qwen3VL-2B-Instruct-Q8_0.gguf}
+      TILESERVER_INTERNAL_URL: ${TILESERVER_INTERNAL_URL:-http://consumer-tileserver:8002}
+      MINIO_S3_ENDPOINT: ${MINIO_S3_ENDPOINT:-http://minio:9000}
+      # Internal and public endpoints must both include the bucket name — the code
+      # does a plain string-replace of one for the other, so their shapes must match
+      # or the bucket segment silently disappears from the resulting internal URL.
+      MINIO_INTERNAL_ENDPOINT: ${MINIO_INTERNAL_ENDPOINT:-http://minio:9000/${MINIO_BUCKET:-histovis-images}}
+      MINIO_PUBLIC_ENDPOINT: ${MINIO_PUBLIC_ENDPOINT:-https://storage.${PUBLIC_DOMAIN:-histovis.online}/${MINIO_BUCKET:-histovis-images}}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin47205!@%}
+      MINIO_BUCKET: ${MINIO_BUCKET:-histovis-images}
+    ports:
+      - "8090:8000"
+    volumes:
+      # Qwen GGUF model — never bundled in the image; entrypoint.sh downloads it
+      # from Hugging Face on first start and caches it here across restarts. First
+      # deploy on a fresh volume takes a while (~1.5GB download); every deploy
+      # after that is instant since the volume persists.
+      - qwen_models:/app/models
+      - plugins_cache:/app/plugins
+    networks:
+      - histovis-network
+    restart: unless-stopped
+
+  consumer-stardist:
+    build:
+      context: .
+      dockerfile: consumer-stardist/Dockerfile
+    environment:
+      RABBITMQ_HOST: ${RABBITMQ_HOST:-rabbitmq}
+      RABBITMQ_PORT: ${RABBITMQ_PORT:-5672}
+      RABBITMQ_USER: ${RABBITMQ_USER:-histovis}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-histovis47205!@%}
+      RABBITMQ_SSL: ${RABBITMQ_SSL:-false}
+      RABBITMQ_VHOST: ${RABBITMQ_VHOST:-}
+      RABBITMQ_EXCHANGE: ${RABBITMQ_EXCHANGE:-analysis.exchange}
+      ANALYSIS_SERVICE_URL: ${ANALYSIS_SERVICE_URL:-http://analysis-service:8087}
+      TILESERVER_INTERNAL_URL: ${TILESERVER_INTERNAL_URL:-http://consumer-tileserver:8002}
+      MINIO_S3_ENDPOINT: ${MINIO_S3_ENDPOINT:-http://minio:9000}
+      MINIO_INTERNAL_ENDPOINT: ${MINIO_INTERNAL_ENDPOINT:-http://minio:9000/${MINIO_BUCKET:-histovis-images}}
+      MINIO_PUBLIC_ENDPOINT: ${MINIO_PUBLIC_ENDPOINT:-https://storage.${PUBLIC_DOMAIN:-histovis.online}/${MINIO_BUCKET:-histovis-images}}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin47205!@%}
+      MINIO_BUCKET: ${MINIO_BUCKET:-histovis-images}
+    ports:
+      - "8091:8001"
+    volumes:
+      # StarDist auto-downloads 2D_versatile_he on first start; persist across restarts
+      - stardist_cache:/root/.stardist
+      - plugins_cache:/app/plugins
+    networks:
+      - histovis-network
+    restart: unless-stopped
+    # No GPU needed/expected — this correctly falls back to CPU inference. The
+    # "cuInit: UNKNOWN ERROR" line you'll see in logs on a GPU-less host is a
+    # harmless probe failure, not a crash; confirm via "StarDist model loaded
+    # successfully" appearing right after it.
+
+  consumer-tileserver:
+    build:
+      context: .
+      dockerfile: consumer-tileserver/Dockerfile
+    environment:
+      RABBITMQ_HOST: ${RABBITMQ_HOST:-rabbitmq}
+      RABBITMQ_PORT: ${RABBITMQ_PORT:-5672}
+      RABBITMQ_USER: ${RABBITMQ_USER:-histovis}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-histovis47205!@%}
+      RABBITMQ_SSL: ${RABBITMQ_SSL:-false}
+      RABBITMQ_VHOST: ${RABBITMQ_VHOST:-}
+      IMAGE_SERVICE_URL: ${IMAGE_SERVICE_URL:-http://images-service:8086}
+      # This is the URL OpenSeadragon actually fetches .dzi/tile requests from, so
+      # it must be publicly reachable over HTTPS — see DEPLOY.md for the one-time
+      # manual step to expose this service through Coolify's proxy at this address.
+      TILESERVER_PUBLIC_BASE_URL: ${TILESERVER_PUBLIC_BASE_URL:-https://tiles.${PUBLIC_DOMAIN:-histovis.online}}
+      MINIO_S3_ENDPOINT: ${MINIO_S3_ENDPOINT:-http://minio:9000}
+      MINIO_INTERNAL_ENDPOINT: ${MINIO_INTERNAL_ENDPOINT:-http://minio:9000/${MINIO_BUCKET:-histovis-images}}
+      MINIO_PUBLIC_ENDPOINT: ${MINIO_PUBLIC_ENDPOINT:-https://storage.${PUBLIC_DOMAIN:-histovis.online}/${MINIO_BUCKET:-histovis-images}}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin47205!@%}
+      MINIO_BUCKET: ${MINIO_BUCKET:-histovis-images}
+    ports:
+      # Container-side MUST match the app's actual internal listen port (8002).
+      # It does not read a PORT env var — it's hardcoded in the Dockerfile/CMD —
+      # so unlike the other two services this port cannot just be changed here.
+      - "8092:8002"
+    volumes:
+      - tileserver_slides:/app/slides
+      - plugins_cache:/app/plugins
+    networks:
+      - histovis-network
+    restart: unless-stopped
+
+volumes:
+  stardist_cache:
+  tileserver_slides:
+  plugins_cache:
+  qwen_models:
+
+networks:
+  # Deliberately NOT external:true — the first of the two histovis apps to deploy
+  # on a fresh server creates this network; the second one just attaches to the
+  # already-existing network of the same name. See DEPLOY.md for deploy order.
+  histovis-network:
+    name: histovis-network
+
+# ---------------------------------------------------------------------------
+# Required / recommended environment variables to set in Coolify (or a real
+# .env file) — copy this whole block as a starting point:
+# ---------------------------------------------------------------------------
+#
+# # Must match histovis-monorepo's PUBLIC_DOMAIN — everything below derives from it
+# PUBLIC_DOMAIN=histovis.online
+#
+# # Must match histovis-monorepo's rabbitmq/minio credentials exactly, since both
+# # repos talk to the SAME broker/bucket over the shared histovis-network
+# RABBITMQ_USER=histovis
+# RABBITMQ_PASSWORD=histovis47205!@%
+# MINIO_ACCESS_KEY=minioadmin
+# MINIO_SECRET_KEY=minioadmin47205!@%
+#
+# Everything else in this file already has a working default and does not need
+# to be set unless you want to override it.
