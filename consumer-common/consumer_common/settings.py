@@ -1,3 +1,4 @@
+from urllib.parse import quote
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class BaseConsumerSettings(BaseSettings):
@@ -17,10 +18,9 @@ class BaseConsumerSettings(BaseSettings):
     @property
     def rabbitmq_url(self) -> str:
         scheme = "amqps" if self.rabbitmq_ssl else "amqp"
-        vhost = f"/{self.rabbitmq_vhost}" if self.rabbitmq_vhost else "/"
-        return (
-            f"{scheme}://{self.rabbitmq_user}:{self.rabbitmq_password}"
-            f"@{self.rabbitmq_host}:{self.rabbitmq_port}{vhost}"
-        )
+        vhost = f"/{quote(self.rabbitmq_vhost, safe='')}" if self.rabbitmq_vhost else "/"
+        user = quote(self.rabbitmq_user, safe="")
+        password = quote(self.rabbitmq_password, safe="")
+        return f"{scheme}://{user}:{password}@{self.rabbitmq_host}:{self.rabbitmq_port}{vhost}"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")

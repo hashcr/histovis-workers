@@ -57,6 +57,12 @@ services:
       # after that is instant since the volume persists.
       - qwen_models:/app/models
       - plugins_cache:/app/plugins
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4)"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 60s
     networks:
       - histovis-network
     restart: unless-stopped
@@ -85,8 +91,14 @@ services:
       - "8091:8001"
     volumes:
       # StarDist auto-downloads 2D_versatile_he on first start; persist across restarts
-      - stardist_cache:/root/.stardist
+      - stardist_cache:/root/.keras
       - plugins_cache:/app/plugins
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health', timeout=4)"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 30s
     networks:
       - histovis-network
     restart: unless-stopped
@@ -125,6 +137,12 @@ services:
     volumes:
       - tileserver_slides:/app/slides
       - plugins_cache:/app/plugins
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8002/health', timeout=4)"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 15s
     networks:
       - histovis-network
     restart: unless-stopped
