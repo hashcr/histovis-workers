@@ -2,6 +2,7 @@ import logging
 from threading import Thread
 
 from llama_cpp import Llama
+from llama_cpp.llama_chat_format import MTMDChatHandler
 
 from settings import settings
 
@@ -13,11 +14,14 @@ model_ready: bool = False
 def load_model() -> None:
     global llm, model_ready
 
-    logger.info("Loading model from %s", settings.model_path)
+    logger.info("Loading model from %s (mmproj: %s)", settings.model_path, settings.mmproj_path)
+
+    chat_handler = MTMDChatHandler(clip_model_path=settings.mmproj_path)
 
     llm = Llama(
         model_path = settings.model_path,
-        n_ctx= 2048,
+        chat_handler = chat_handler,
+        n_ctx= 4096,
         n_threads= 4,
         verbose = False,
     )
@@ -31,5 +35,5 @@ def load_model_async() -> None:
 
 def get_llm() -> Llama:
     if llm is None:
-        raise RuntimeError("Qwen 0.5B Model not ready yet.")
+        raise RuntimeError("Model not ready yet.")
     return llm
