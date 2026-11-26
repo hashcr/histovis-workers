@@ -14,5 +14,6 @@ class Settings(BaseConsumerSettings):
     minio_bucket: str = "histovis-images"
     tileserver_internal_url: str = "http://consumer-tileserver:8002"
     plugins_dir: str = "/app/plugins"
+    plugins_installed_dir: str = "/app/plugins/installed/qwen"
 
 settings = Settings()

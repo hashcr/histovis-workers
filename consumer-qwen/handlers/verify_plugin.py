@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import re
 from pathlib import Path, PurePosixPath
 from urllib.parse import urlparse
 from pydantic import ValidationError
@@ -16,20 +17,23 @@ from settings import settings
 logger = logging.getLogger(__name__)
 
 _SECURITY_PROMPT = """\
-You are a security reviewer for Python plugin handlers. A handler must ONLY: load an image or data, run it through an AI model, and return a result value. Anything else is UNSAFE.
+You are a security reviewer for HistoVis Python plugin handlers.
+A valid plugin defines `async def handle(body: dict)` which:
+1. Parses `JobMessage` and arguments (`json`, `urllib.parse`, `PurePosixPath` are SAFE).
+2. Loads the input image region via `consumer_common.tileserver_client` (`is_svs`, `fetch_svs_region`, `fetch_jpeg_region`).
+3. Runs AI or image analysis using `model_loader` (`get_stardist`, `get_llm`) and scientific/image libraries (`numpy`, `PIL`, `skimage`, `csbdeep`, `stardist`, `llama_cpp`).
+4. Reports job status/results ONLY to the `analysis-service` API via `consumer_common.http_client` (`notify_job_completed`, `notify_job_failed`, `notify_job_running`) or `settings.analysis_service_url`.
 
 Decide if the code below is SAFE or UNSAFE. When uncertain, answer UNSAFE.
 
 Mark UNSAFE if the code contains ANY of:
-- Network calls (requests, urllib, socket, http, httpx)
-- Shell/system execution (os.system, subprocess, popen, eval, exec, compile, __import__)
-- File access beyond reading input or writing the result (os.remove, shutil, open() for delete/append to system paths)
-- Dangerous imports (ctypes, socket, pickle.loads, sys.exit, importlib)
-- Obvious infinite loops (while True without break, recursion without base case)
-- Reading secrets/env (os.environ, /etc, ~/.ssh, credentials, keys)
-- Obfuscation (base64/hex decode then exec, getattr/setattr on dynamic strings)
-
-Mark SAFE ONLY if the code does nothing but: read the input, call an AI/analysis function, return a value.
+- Network/HTTP calls to anything OTHER than the `analysis-service` API or `consumer_common` image/job helpers (`requests`, `urllib.request`, `socket`, or `httpx`/`http` to external/arbitrary URLs are UNSAFE; `consumer_common.http_client`, `consumer_common.tileserver_client`, and `urllib.parse` are SAFE)
+- Shell/system execution (`os.system`, `subprocess`, `popen`, `eval`, `exec`, `compile`, `__import__`)
+- File system modification or arbitrary file access (`os.remove`, `shutil`, `open()` on host/system paths)
+- Dangerous imports (`ctypes`, `socket`, `pickle`, `sys.exit`, `importlib`)
+- Obvious infinite loops (`while True` without break, unbounded recursion)
+- Reading secrets or environment variables (`os.environ`, `/etc`, `~/.ssh`, credentials, keys — passing `settings` endpoints to `consumer_common` helpers is SAFE)
+- Obfuscation (`base64`/`hex` decode into `exec`/`eval`, dynamic `getattr`/`setattr`; encoding images to `base64` data URIs is SAFE)
 
 Output rules:
 - Respond with EXACTLY ONE line of JSON and nothing before or after.
@@ -49,14 +53,16 @@ def validate(script_path: str) -> bool:
     llm = get_llm()
     response = llm.create_chat_completion(
         messages=[{"role": "user", "content": _SECURITY_PROMPT.format(handler_code=code)}],
-        max_tokens=100,
+        max_tokens=150,
         temperature=0.0,
     )
     raw = response["choices"][0]["message"]["content"].strip()
     logger.info("Security review raw response | path=%s | response=%s", script_path, raw)
+    cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw.strip(), flags=re.IGNORECASE)
+    match = re.search(r"\{.*\}", cleaned, flags=re.DOTALL)
     try:
-        verdict = json.loads(raw)["verdict"]
-        return verdict == "SAFE"
+        payload = json.loads(match.group(0) if match else cleaned)
+        return payload.get("verdict") == "SAFE"
     except Exception:
         logger.warning("Could not parse security review response | path=%s | raw=%s", script_path, raw)
         return False

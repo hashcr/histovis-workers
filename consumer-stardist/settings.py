@@ -8,6 +8,7 @@ class Settings(BaseConsumerSettings):
     minio_public_endpoint: str = "http://localhost:9000"
     minio_internal_endpoint: str = "http://minio:9000"
     tileserver_internal_url: str = "http://consumer-tileserver:8002"
+    plugins_installed_dir: str = "/app/plugins/installed/stardist"
 
     model_config = SettingsConfigDict(env_file=".env")
 

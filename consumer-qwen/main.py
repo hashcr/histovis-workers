@@ -1,7 +1,9 @@
 import sys
 from pathlib import Path
 
-_installed = Path("/app/plugins/installed")
+from settings import settings
+
+_installed = Path(settings.plugins_installed_dir)
 _installed.mkdir(parents=True, exist_ok=True)
 sys.path.insert(0, str(_installed))
 
@@ -15,7 +17,6 @@ from fastapi import FastAPI
 from consumer import start_consumer
 from model_loader import load_model_async
 import model_loader
-from settings import Settings
 
 # create logs directory if it doesn't exist
 Path("logs").mkdir(exist_ok=True)
@@ -35,8 +36,6 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger(__name__)
-
-settings = Settings()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
