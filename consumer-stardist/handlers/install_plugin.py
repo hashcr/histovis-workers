@@ -26,13 +26,27 @@ async def handle_install(body: dict) -> None:
     dest = Path(settings.plugins_installed_dir) / f"{plugin_code}.py"
 
     try:
+        if not plugin_code.isidentifier():
+            src.unlink(missing_ok=True)
+            raise ValueError(f"Invalid plugin code '{plugin_code}': must be a valid Python identifier")
+
+        builtin_handlers = load_handlers()
+        if plugin_code in builtin_handlers:
+            src.unlink(missing_ok=True)
+            raise ValueError(f"Plugin code '{plugin_code}' conflicts with a built-in handler")
+
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(str(src), str(dest))
         logger.info("Moved plugin script | from=%s | to=%s", src, dest)
 
+        dynamic_handlers = load_dynamic_handlers(settings.plugins_installed_dir)
+        if plugin_code not in dynamic_handlers:
+            dest.unlink(missing_ok=True)
+            raise RuntimeError(f"Plugin '{plugin_code}' failed to load or is missing 'async def handle(body)'")
+
         consumer.registry.clear()
-        consumer.registry.update(load_handlers())
-        consumer.registry.update(load_dynamic_handlers(settings.plugins_installed_dir))
+        consumer.registry.update(dynamic_handlers)
+        consumer.registry.update(builtin_handlers)
         logger.info("Handler registry reloaded | plugin_code=%s now active", plugin_code)
 
         await update_plugin_status(settings.analysis_service_url, message.plugin_id, "INSTALLED")

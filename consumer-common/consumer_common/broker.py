@@ -6,14 +6,16 @@ from collections.abc import Callable
 import aio_pika
 from aio_pika.abc import AbstractIncomingMessage
 
+from consumer_common.http_client import notify_job_failed
 from consumer_common.settings import BaseConsumerSettings
 
 logger = logging.getLogger(__name__)
 
 
 class MessageConsumer:
-    def __init__(self, registry: dict[str, Callable]):
+    def __init__(self, registry: dict[str, Callable], analysis_service_url: str = ""):
         self.registry = registry
+        self.analysis_service_url = analysis_service_url
 
     async def on_message(self, message: AbstractIncomingMessage) -> None:
         async with message.process(requeue=False):
@@ -33,6 +35,13 @@ class MessageConsumer:
 
                 if handler is None:
                     logger.error("No handler suitable for plugin code: '%s'", plugin_code)
+                    job_id = body.get("jobId")
+                    if job_id and self.analysis_service_url:
+                        await notify_job_failed(
+                            self.analysis_service_url,
+                            str(job_id),
+                            f"No handler registered for plugin '{plugin_code}'",
+                        )
                     return
 
                 await handler(body)
@@ -99,7 +108,7 @@ async def start_consuming(
             settings.rabbitmq_routing_key,
         )
 
-        consumer = MessageConsumer(registry)
+        consumer = MessageConsumer(registry, settings.analysis_service_url)
         await queue.consume(consumer.on_message)
         await asyncio.Future()
 

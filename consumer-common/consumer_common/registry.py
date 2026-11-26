@@ -1,5 +1,7 @@
 import importlib
+import inspect
 import logging
+import sys
 from pathlib import Path
 from collections.abc import Callable
 
@@ -12,14 +14,19 @@ def load_dynamic_handlers(plugins_dir: str) -> dict[str, Callable]:
     path = Path(plugins_dir)
     if not path.exists():
         return {}
+    importlib.invalidate_caches()
     handlers = {}
     for py_file in sorted(path.glob("*.py")):
         plugin_code = py_file.stem
         try:
+            sys.modules.pop(plugin_code, None)
             module = importlib.import_module(plugin_code)
-            handlers[plugin_code] = getattr(module, "handle")
+            handler = getattr(module, "handle")
+            if not inspect.iscoroutinefunction(handler):
+                raise TypeError(f"'{plugin_code}.handle' must be an async function (async def handle(body: dict))")
+            handlers[plugin_code] = handler
             logger.info("Registered dynamic handler | plugin_code=%s", plugin_code)
-        except (ImportError, AttributeError) as e:
+        except Exception as e:
             logger.error("Failed to load dynamic handler | plugin_code=%s | error=%s", plugin_code, e)
     return handlers
 

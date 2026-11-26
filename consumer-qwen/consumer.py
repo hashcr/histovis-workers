@@ -10,8 +10,8 @@ registry: dict = {}
 
 async def start_consumer() -> None:
     global registry
-    registry = load_handlers()
-    registry.update(load_dynamic_handlers(settings.plugins_installed_dir))
+    registry = load_dynamic_handlers(settings.plugins_installed_dir)
+    registry.update(load_handlers())
     await start_consuming(settings, registry)
 
 
